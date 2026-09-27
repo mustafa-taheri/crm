@@ -1,57 +1,55 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-@layer base {
-  :root {
-    /* Brand */
-    --primary: #9d2b2b;
-    --primary-dark: #7a2121;
-    --primary-foreground: #ffffff;
+:root {
+  /* Brand */
+  --primary: #9d2b2b;
+  --primary-dark: #7a2121;
+  --primary-foreground: #ffffff;
 
-    /* Neutral */
-    --background: #ffffff;
-    --foreground: #0a0a0a;
-    --card: #ffffff;
-    --card-foreground: #0a0a0a;
-    --muted: #f3f4f6;
-    --muted-foreground: #6b7280;
-    --border: #e5e7eb;
-    --input: #e5e7eb;
-    --accent: #fef2f2;
-    --accent-foreground: #9d2b2b;
+  /* Neutral */
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --card: #ffffff;
+  --card-foreground: #0a0a0a;
+  --muted: #f3f4f6;
+  --muted-foreground: #6b7280;
+  --border: #e5e7eb;
+  --input: #e5e7eb;
+  --accent: #fef2f2;
+  --accent-foreground: #9d2b2b;
 
-    /* Status */
-    --success: #10b981;
-    --success-light: #d1fae5;
-    --warning: #f59e0b;
-    --warning-light: #fef3c7;
-    --error: #ef4444;
-    --error-light: #fee2e2;
-    --info: #3b82f6;
-    --info-light: #dbeafe;
-  }
-
-  /* Dark mode overrides */
-  .dark {
-    --background: #0a0a0a;
-    --foreground: #f9fafb;
-    --card: #1a1a1a;
-    --card-foreground: #f9fafb;
-    --muted: #1e1e1e;
-    --muted-foreground: #9ca3af;
-    --border: #374151;
-    --input: #374151;
-    --accent: #1a0f0f;
-    --accent-foreground: #c95353;
-  }
+  /* Status */
+  --success: #10b981;
+  --success-light: #d1fae5;
+  --warning: #f59e0b;
+  --warning-light: #fef3c7;
+  --error: #ef4444;
+  --error-light: #fee2e2;
+  --info: #3b82f6;
+  --info-light: #dbeafe;
 }
 
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground font-sans antialiased;
-  }
+.dark {
+  --background: #0a0a0a;
+  --foreground: #f9fafb;
+  --card: #1a1a1a;
+  --card-foreground: #f9fafb;
+  --muted: #1e1e1e;
+  --muted-foreground: #9ca3af;
+  --border: #374151;
+  --input: #374151;
+  --accent: #1a0f0f;
+  --accent-foreground: #c95353;
+}
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+    Cantarell, "Helvetica Neue", "Arial Nova", "Inter", sans-serif;
 }

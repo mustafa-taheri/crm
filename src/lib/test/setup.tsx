@@ -1,5 +1,5 @@
-import "@testing-library/jest-dom"
-import { vi } from "vitest"
+import "@testing-library/jest-dom/vitest";
+import { vi } from "vitest";
 
 // Mock next/navigation
 vi.mock("next/navigation", () => ({
@@ -10,12 +10,14 @@ vi.mock("next/navigation", () => ({
   }),
   usePathname: () => "/",
   useSearchParams: () => new URLSearchParams(),
-}))
+}));
 
 // Mock next/image
 vi.mock("next/image", () => ({
   default: (props: Record<string, unknown>) => {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img {...(props as Record<string, string>)} alt={props.alt as string} />
+    return (
+      <img {...(props as Record<string, string>)} alt={props.alt as string} />
+    );
   },
-}))
+}));
