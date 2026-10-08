@@ -143,10 +143,35 @@ create table public.import_jobs (
 
 alter table public.import_jobs enable row level security;
 
+-- create policy "Users can view own import jobs" on public.import_jobs
+--   for select using (
+--     created_by = (select id from public.profiles where user_id = auth.uid())
+--     or exists (select 1 from public.profiles where user_id = auth.uid() and role = 'admin')
+--   );
+
+-- 1. Drop the recursive policy
+drop policy "Users can view own import jobs" on public.import_jobs;
+
+-- 2. Create a secure function to check user profile status
+create or replace function public.can_view_import_job(job_created_by uuid, current_user_auth_id uuid)
+returns boolean
+language sql
+security definer -- Bypasses RLS loop for this lookup
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 
+    from public.profiles 
+    where user_id = current_user_auth_id 
+      and (id = job_created_by or role = 'admin')
+  );
+$$;
+
+-- 3. Recreate the policy using the security definer function
 create policy "Users can view own import jobs" on public.import_jobs
   for select using (
-    created_by = (select id from public.profiles where user_id = auth.uid())
-    or exists (select 1 from public.profiles where user_id = auth.uid() and role = 'admin')
+    public.can_view_import_job(created_by, auth.uid())
   );
 
 create policy "Authenticated users can insert import jobs" on public.import_jobs
