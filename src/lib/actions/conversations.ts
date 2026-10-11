@@ -31,18 +31,18 @@ export async function fetchConversations(
       last_message_at,
       last_customer_message_at,
       assigned_user_id,
-      customer:customers(
+      customer:customers!customer_id(
         id,
         name,
         company,
         email,
         city,
         status,
-        phones:customer_phones(phone_number, country_code, is_primary),
-        tags:customer_tags(tag:tags(id, name))
+        phones:customer_phones!customer_id(phone_number, country_code, is_primary),
+        tags:customer_tags!customer_id(tag:tags!tag_id(id, name))
       ),
-      assigned_user:profiles(id, full_name),
-      messages(id, content, direction, message_type, created_at, status)
+      assigned_user:profiles!assigned_user_id(id, full_name),
+      messages:messages!conversation_id(id, content, direction, message_type, created_at, status)
     `,
     )
     .eq("state", "open")
@@ -54,9 +54,71 @@ export async function fetchConversations(
     query = query.eq("assigned_user_id", profile.id);
   }
 
-  const { data, error } = await query;
-  if (error) throw error;
-  return data ?? [];
+  let { data, error } = await query;
+  if (!error && data) return data;
+
+  // Fallback: If PostgREST relationship fails (PGRST200 / stale cache), fetch and assemble manually
+  let fallbackQuery = supabase
+    .from("conversations")
+    .select("*")
+    .eq("state", "open")
+    .order("last_message_at", { ascending: false, nullsFirst: false });
+
+  if (filter === "unread") {
+    fallbackQuery = fallbackQuery.gt("unread_count", 0);
+  } else if (filter === "mine" && profile) {
+    fallbackQuery = fallbackQuery.eq("assigned_user_id", profile.id);
+  }
+
+  const { data: rawConvs, error: rawError } = await fallbackQuery;
+  if (rawError) throw rawError;
+  if (!rawConvs || rawConvs.length === 0) return [];
+
+  const customerIds = Array.from(new Set(rawConvs.map((c) => c.customer_id).filter(Boolean)));
+  const userIds = Array.from(new Set(rawConvs.map((c) => c.assigned_user_id).filter(Boolean))) as string[];
+  const convIds = rawConvs.map((c) => c.id);
+
+  const [{ data: customers }, { data: phones }, { data: tags }, { data: profiles }, { data: messages }] =
+    await Promise.all([
+      customerIds.length > 0
+        ? supabase.from("customers").select("*").in("id", customerIds)
+        : Promise.resolve({ data: [] }),
+      customerIds.length > 0
+        ? supabase.from("customer_phones").select("*").in("customer_id", customerIds)
+        : Promise.resolve({ data: [] }),
+      customerIds.length > 0
+        ? supabase.from("customer_tags").select("customer_id, tag:tags(*)").in("customer_id", customerIds)
+        : Promise.resolve({ data: [] }),
+      userIds.length > 0
+        ? supabase.from("profiles").select("id, full_name").in("id", userIds)
+        : Promise.resolve({ data: [] }),
+      convIds.length > 0
+        ? supabase
+            .from("messages")
+            .select("id, conversation_id, content, direction, message_type, created_at, status")
+            .in("conversation_id", convIds)
+            .order("created_at", { ascending: true })
+        : Promise.resolve({ data: [] }),
+    ]);
+
+  const customerMap = new Map(
+    (customers || []).map((c) => [
+      c.id,
+      {
+        ...c,
+        phones: (phones || []).filter((p) => p.customer_id === c.id),
+        tags: (tags || []).filter((t: any) => t.customer_id === c.id),
+      },
+    ]),
+  );
+  const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
+
+  return rawConvs.map((conv) => ({
+    ...conv,
+    customer: customerMap.get(conv.customer_id) || null,
+    assigned_user: conv.assigned_user_id ? profileMap.get(conv.assigned_user_id) || null : null,
+    messages: (messages || []).filter((m) => m.conversation_id === conv.id),
+  }));
 }
 
 export async function fetchConversationDetails(conversationId: string) {
@@ -78,34 +140,81 @@ export async function fetchConversationDetails(conversationId: string) {
       last_message_at,
       last_customer_message_at,
       assigned_user_id,
-      customer:customers(
+      customer:customers!customer_id(
         id,
         name,
         company,
         email,
         city,
         status,
-        phones:customer_phones(phone_number, country_code, is_primary),
-        tags:customer_tags(tag:tags(id, name))
+        phones:customer_phones!customer_id(phone_number, country_code, is_primary),
+        tags:customer_tags!customer_id(tag:tags!tag_id(id, name))
       ),
-      assigned_user:profiles(id, full_name),
-      messages(
+      assigned_user:profiles!assigned_user_id(id, full_name),
+      messages:messages!conversation_id(
         id,
         content,
         direction,
         message_type,
         status,
         created_at,
-        sender:profiles(id, full_name),
-        media:message_media(id, media_type, file_url, file_name, mime_type)
+        sender:profiles!sender_user_id(id, full_name),
+        media:message_media!message_id(id, media_type, file_url, file_name, mime_type)
       )
     `,
     )
     .eq("id", conversationId)
     .single();
 
-  if (error) throw error;
-  return data;
+  if (!error && data) return data;
+
+  // Fallback: Fetch conversation, customer, phones, tags, messages separately
+  const { data: conv, error: convErr } = await supabase
+    .from("conversations")
+    .select("*")
+    .eq("id", conversationId)
+    .single();
+
+  if (convErr) throw convErr;
+
+  const [
+    { data: customer },
+    { data: phones },
+    { data: tags },
+    { data: assignedUser },
+    { data: messages },
+  ] = await Promise.all([
+    conv.customer_id
+      ? supabase.from("customers").select("*").eq("id", conv.customer_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    conv.customer_id
+      ? supabase.from("customer_phones").select("*").eq("customer_id", conv.customer_id)
+      : Promise.resolve({ data: [] }),
+    conv.customer_id
+      ? supabase.from("customer_tags").select("customer_id, tag:tags(*)").eq("customer_id", conv.customer_id)
+      : Promise.resolve({ data: [] }),
+    conv.assigned_user_id
+      ? supabase.from("profiles").select("id, full_name").eq("id", conv.assigned_user_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    supabase
+      .from("messages")
+      .select("*, media:message_media(*)")
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: true }),
+  ]);
+
+  return {
+    ...conv,
+    customer: customer
+      ? {
+          ...customer,
+          phones: phones || [],
+          tags: tags || [],
+        }
+      : null,
+    assigned_user: assignedUser || null,
+    messages: messages || [],
+  };
 }
 
 export async function getOrCreateConversationForCustomer(customerId: string) {
@@ -114,11 +223,15 @@ export async function getOrCreateConversationForCustomer(customerId: string) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("user_id", user?.id || "")
-    .maybeSingle();
+  let profileId: string | null = null;
+  if (user?.id) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    profileId = profile?.id || null;
+  }
 
   // Check if existing open conversation exists
   const { data: existing } = await supabase
@@ -135,7 +248,7 @@ export async function getOrCreateConversationForCustomer(customerId: string) {
     .from("conversations")
     .insert({
       customer_id: customerId,
-      assigned_user_id: profile?.id || null,
+      assigned_user_id: profileId,
       state: "open",
       last_message_at: new Date().toISOString(),
     })

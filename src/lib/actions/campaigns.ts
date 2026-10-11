@@ -100,10 +100,10 @@ export async function fetchCampaigns() {
     .select(
       `
       *,
-      template:whatsapp_templates(id, name, content),
+      template:whatsapp_templates!template_id(id, name, content),
       creator:profiles!created_by(id, full_name),
       approver:profiles!approved_by(id, full_name),
-      recipients:campaign_recipients(id, status, read_at, replied_at, delivered_at)
+      recipients:campaign_recipients!campaign_id(id, status, read_at, replied_at, delivered_at)
     `,
     )
     .order("created_at", { ascending: false });
@@ -119,11 +119,11 @@ export async function fetchCampaignDetails(id: string) {
     .select(
       `
       *,
-      template:whatsapp_templates(id, name, content),
+      template:whatsapp_templates!template_id(id, name, content),
       creator:profiles!created_by(id, full_name),
       approver:profiles!approved_by(id, full_name),
-      media:campaign_media(id, media_type, file_url, file_name),
-      recipients:campaign_recipients(
+      media:campaign_media!campaign_id(id, media_type, file_url, file_name),
+      recipients:campaign_recipients!campaign_id(
         id,
         status,
         sent_at,
@@ -131,7 +131,7 @@ export async function fetchCampaignDetails(id: string) {
         read_at,
         replied_at,
         failed_at,
-        customer:customers(id, name, company, email, phones:customer_phones(phone_number))
+        customer:customers!customer_id(id, name, company, email, phones:customer_phones!customer_id(phone_number))
       )
     `,
     )

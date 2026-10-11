@@ -25,9 +25,7 @@ create policy "Authenticated users can insert templates" on public.whatsapp_temp
   for insert with check (auth.role() = 'authenticated');
 
 create policy "Admins can update templates" on public.whatsapp_templates
-  for update using (
-    exists (select 1 from public.profiles where user_id = auth.uid() and role = 'admin')
-  );
+  for update using (public.is_admin());
 
 create trigger whatsapp_templates_updated_at before update on public.whatsapp_templates
   for each row execute procedure public.set_updated_at();

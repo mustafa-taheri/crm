@@ -57,6 +57,7 @@ Run the SQL migration scripts in order in your **Supabase SQL Editor** (found in
 4. `004_campaigns.sql` — WhatsApp templates, campaigns, recipients, and media.
 5. `005_followups_notes_activities.sql` — Follow-ups, customer notes, and activity timeline.
 6. `006_views_and_helpers.sql` — Database views (`dashboard_stats`, `pipeline_counts`, `campaign_analytics`).
+7. `007_fix_rls_recursion.sql` — RLS recursion protection (`is_admin()` security definer function).
 
 ---
 

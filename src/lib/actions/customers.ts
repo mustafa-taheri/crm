@@ -49,8 +49,8 @@ export async function fetchCustomers(params: {
     `
       *,
       primary_owner:profiles!primary_owner_id(id, full_name),
-      phones:customer_phones(id, phone_number, country_code, is_primary),
-      tags:customer_tags(tag:tags(id, name))
+      phones:customer_phones!customer_id(id, phone_number, country_code, is_primary),
+      tags:customer_tags!customer_id(tag:tags!tag_id(id, name))
     `,
     { count: "exact" },
   );
@@ -95,10 +95,18 @@ export async function createCustomer(formData: FormData) {
   const profile = await getProfile(supabase);
 
   const raw = Object.fromEntries(formData);
-  const phones = JSON.parse((raw.phones as string) || "[]");
-  const tag_ids = JSON.parse((raw.tag_ids as string) || "[]");
+  const inputPhones = typeof raw.phones === "string" ? JSON.parse(raw.phones || "[]") : (raw.phones || []);
+  const inputTagIds = typeof raw.tag_ids === "string" ? JSON.parse(raw.tag_ids || "[]") : (raw.tag_ids || []);
+  const inputMarketingOptOut = String(raw.marketing_opt_out) === "true";
+  const inputPrimaryOwnerId = raw.primary_owner_id && raw.primary_owner_id !== "none" ? String(raw.primary_owner_id) : null;
 
-  const parsed = customerSchema.safeParse({ ...raw, phones, tag_ids });
+  const parsed = customerSchema.safeParse({
+    ...raw,
+    phones: inputPhones,
+    tag_ids: inputTagIds,
+    marketing_opt_out: inputMarketingOptOut,
+    primary_owner_id: inputPrimaryOwnerId,
+  });
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors };
 
   const {
@@ -144,11 +152,11 @@ export async function createCustomer(formData: FormData) {
   }
 
   // Insert tags
-  if (tag_ids.length > 0) {
+  if (parsed.data.tag_ids && parsed.data.tag_ids.length > 0) {
     await supabase
       .from("customer_tags")
       .insert(
-        tag_ids.map((tid: string) => ({
+        parsed.data.tag_ids.map((tid: string) => ({
           customer_id: customer.id,
           tag_id: tid,
         })),
@@ -173,10 +181,18 @@ export async function updateCustomer(id: string, formData: FormData) {
   const profile = await getProfile(supabase);
 
   const raw = Object.fromEntries(formData);
-  const phones = JSON.parse((raw.phones as string) || "[]");
-  const tag_ids = JSON.parse((raw.tag_ids as string) || "[]");
+  const inputPhones = typeof raw.phones === "string" ? JSON.parse(raw.phones || "[]") : (raw.phones || []);
+  const inputTagIds = typeof raw.tag_ids === "string" ? JSON.parse(raw.tag_ids || "[]") : (raw.tag_ids || []);
+  const inputMarketingOptOut = String(raw.marketing_opt_out) === "true";
+  const inputPrimaryOwnerId = raw.primary_owner_id && raw.primary_owner_id !== "none" ? String(raw.primary_owner_id) : null;
 
-  const parsed = customerSchema.safeParse({ ...raw, phones, tag_ids });
+  const parsed = customerSchema.safeParse({
+    ...raw,
+    phones: inputPhones,
+    tag_ids: inputTagIds,
+    marketing_opt_out: inputMarketingOptOut,
+    primary_owner_id: inputPrimaryOwnerId,
+  });
   if (!parsed.success) return { error: parsed.error.flatten().fieldErrors };
 
   const {
@@ -223,10 +239,10 @@ export async function updateCustomer(id: string, formData: FormData) {
 
   // Replace tags
   await supabase.from("customer_tags").delete().eq("customer_id", id);
-  if (tag_ids.length > 0) {
+  if (parsed.data.tag_ids && parsed.data.tag_ids.length > 0) {
     await supabase
       .from("customer_tags")
-      .insert(tag_ids.map((tid: string) => ({ customer_id: id, tag_id: tid })));
+      .insert(parsed.data.tag_ids.map((tid: string) => ({ customer_id: id, tag_id: tid })));
   }
 
   await supabase.from("activities").insert({
@@ -323,8 +339,8 @@ export async function fetchCustomer(id: string) {
       `
       *,
       primary_owner:profiles!primary_owner_id(id, full_name),
-      phones:customer_phones(id, phone_number, country_code, is_primary),
-      tags:customer_tags(tag:tags(id, name))
+      phones:customer_phones!customer_id(id, phone_number, country_code, is_primary),
+      tags:customer_tags!customer_id(tag:tags!tag_id(id, name))
     `,
     )
     .eq("id", id)

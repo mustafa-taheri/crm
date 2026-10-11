@@ -16,7 +16,7 @@ export async function fetchFollowups(
 
   let query = supabase.from("followups").select(`
       *,
-      customer:customers(id, name, company, city, status, phones:customer_phones(phone_number, country_code, is_primary)),
+      customer:customers!customer_id(id, name, company, city, status, phones:customer_phones!customer_id(phone_number, country_code, is_primary)),
       assigned_user:profiles!assigned_user_id(id, full_name),
       creator:profiles!created_by(id, full_name)
     `);
@@ -35,9 +35,63 @@ export async function fetchFollowups(
     .order("due_date", { ascending: true })
     .order("due_time", { ascending: true, nullsFirst: false });
 
-  const { data, error } = await query;
-  if (error) throw error;
-  return data ?? [];
+  let { data, error } = await query;
+  if (!error && data) return data;
+
+  // Fallback: If PostgREST relationship fails (PGRST200 / stale cache), fetch and assemble manually
+  let fallbackQuery = supabase.from("followups").select("*");
+  if (filter === "today") {
+    fallbackQuery = fallbackQuery.eq("status", "pending").eq("due_date", today);
+  } else if (filter === "upcoming") {
+    fallbackQuery = fallbackQuery.eq("status", "pending").gt("due_date", today);
+  } else if (filter === "overdue") {
+    fallbackQuery = fallbackQuery.eq("status", "pending").lt("due_date", today);
+  } else if (filter === "completed") {
+    fallbackQuery = fallbackQuery.eq("status", "completed");
+  }
+
+  fallbackQuery = fallbackQuery
+    .order("due_date", { ascending: true })
+    .order("due_time", { ascending: true, nullsFirst: false });
+
+  const { data: rawFollowups, error: rawError } = await fallbackQuery;
+  if (rawError) throw rawError;
+  if (!rawFollowups || rawFollowups.length === 0) return [];
+
+  const customerIds = Array.from(new Set(rawFollowups.map((f) => f.customer_id).filter(Boolean)));
+  const userIds = Array.from(
+    new Set(rawFollowups.flatMap((f) => [f.assigned_user_id, f.created_by]).filter(Boolean)),
+  ) as string[];
+
+  const [{ data: customers }, { data: phones }, { data: profiles }] = await Promise.all([
+    customerIds.length > 0
+      ? supabase.from("customers").select("id, name, company, city, status").in("id", customerIds)
+      : Promise.resolve({ data: [] }),
+    customerIds.length > 0
+      ? supabase.from("customer_phones").select("customer_id, phone_number, country_code, is_primary").in("customer_id", customerIds)
+      : Promise.resolve({ data: [] }),
+    userIds.length > 0
+      ? supabase.from("profiles").select("id, full_name").in("id", userIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const customerMap = new Map(
+    (customers || []).map((c) => [
+      c.id,
+      {
+        ...c,
+        phones: (phones || []).filter((p) => p.customer_id === c.id),
+      },
+    ]),
+  );
+  const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
+
+  return rawFollowups.map((f) => ({
+    ...f,
+    customer: customerMap.get(f.customer_id) || null,
+    assigned_user: f.assigned_user_id ? profileMap.get(f.assigned_user_id) || null : null,
+    creator: f.created_by ? profileMap.get(f.created_by) || null : null,
+  }));
 }
 
 export async function createFollowup(formData: FormData) {

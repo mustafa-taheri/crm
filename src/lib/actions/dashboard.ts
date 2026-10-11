@@ -118,8 +118,8 @@ export async function fetchDashboardData() {
       state,
       unread_count,
       last_message_at,
-      customer:customers(id, name, company),
-      assigned_user:profiles(id, full_name)
+      customer:customers!customer_id(id, name, company),
+      assigned_user:profiles!assigned_user_id(id, full_name)
     `,
     )
     .eq("state", "open")
@@ -129,7 +129,50 @@ export async function fetchDashboardData() {
   if (!isAdmin && profile) {
     convQuery = convQuery.eq("assigned_user_id", profile.id);
   }
-  const { data: recentConversations } = await convQuery;
+
+  let { data: recentConversations, error: convError } = await convQuery;
+  if (convError || !recentConversations) {
+    let fallbackConv = supabase
+      .from("conversations")
+      .select(
+        "id, state, unread_count, last_message_at, customer_id, assigned_user_id",
+      )
+      .eq("state", "open")
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .limit(5);
+    if (!isAdmin && profile) {
+      fallbackConv = fallbackConv.eq("assigned_user_id", profile.id);
+    }
+    const { data: rawConvs } = await fallbackConv;
+    if (rawConvs && rawConvs.length > 0) {
+      const cIds = rawConvs
+        .map((c) => c.customer_id)
+        .filter(Boolean) as string[];
+      const uIds = rawConvs
+        .map((c) => c.assigned_user_id)
+        .filter(Boolean) as string[];
+      const [{ data: cData }, { data: uData }] = await Promise.all([
+        cIds.length > 0
+          ? supabase
+              .from("customers")
+              .select("id, name, company")
+              .in("id", cIds)
+          : Promise.resolve({ data: [] }),
+        uIds.length > 0
+          ? supabase.from("profiles").select("id, full_name").in("id", uIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+      const cMap = new Map((cData || []).map((c) => [c.id, c]));
+      const uMap = new Map((uData || []).map((u) => [u.id, u]));
+      recentConversations = rawConvs.map((c) => ({
+        ...c,
+        customer: cMap.get(c.customer_id) || null,
+        assigned_user: c.assigned_user_id
+          ? uMap.get(c.assigned_user_id) || null
+          : null,
+      })) as any;
+    }
+  }
 
   // 4. Today's Follow-ups
   let followupQuery = supabase
@@ -142,8 +185,8 @@ export async function fetchDashboardData() {
       due_time,
       priority,
       status,
-      customer:customers(id, name, company),
-      assigned_user:profiles(id, full_name)
+      customer:customers!customer_id(id, name, company),
+      assigned_user:profiles!assigned_user_id(id, full_name)
     `,
     )
     .eq("status", "pending")
@@ -154,7 +197,48 @@ export async function fetchDashboardData() {
   if (!isAdmin && profile) {
     followupQuery = followupQuery.eq("assigned_user_id", profile.id);
   }
-  const { data: todayFollowups } = await followupQuery;
+  let { data: todayFollowups, error: fuError } = await followupQuery;
+  if (fuError || !todayFollowups) {
+    let fallbackFu = supabase
+      .from("followups")
+      .select(
+        "id, description, due_date, due_time, priority, status, customer_id, assigned_user_id",
+      )
+      .eq("status", "pending")
+      .eq("due_date", today)
+      .order("due_time", { ascending: true, nullsFirst: false })
+      .limit(5);
+    if (!isAdmin && profile) {
+      fallbackFu = fallbackFu.eq("assigned_user_id", profile.id);
+    }
+    const { data: rawFus } = await fallbackFu;
+    if (rawFus && rawFus.length > 0) {
+      const cIds = rawFus.map((f) => f.customer_id).filter(Boolean) as string[];
+      const uIds = rawFus
+        .map((f) => f.assigned_user_id)
+        .filter(Boolean) as string[];
+      const [{ data: cData }, { data: uData }] = await Promise.all([
+        cIds.length > 0
+          ? supabase
+              .from("customers")
+              .select("id, name, company")
+              .in("id", cIds)
+          : Promise.resolve({ data: [] }),
+        uIds.length > 0
+          ? supabase.from("profiles").select("id, full_name").in("id", uIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+      const cMap = new Map((cData || []).map((c) => [c.id, c]));
+      const uMap = new Map((uData || []).map((u) => [u.id, u]));
+      todayFollowups = rawFus.map((f) => ({
+        ...f,
+        customer: cMap.get(f.customer_id) || null,
+        assigned_user: f.assigned_user_id
+          ? uMap.get(f.assigned_user_id) || null
+          : null,
+      })) as any;
+    }
+  }
 
   return {
     profile,

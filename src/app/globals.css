@@ -11,12 +11,15 @@
   --foreground: #0a0a0a;
   --card: #ffffff;
   --card-foreground: #0a0a0a;
+  --popover: #ffffff;
+  --popover-foreground: #0a0a0a;
   --muted: #f3f4f6;
   --muted-foreground: #6b7280;
   --border: #e5e7eb;
   --input: #e5e7eb;
   --accent: #fef2f2;
   --accent-foreground: #9d2b2b;
+  --ring: #9d2b2b;
 
   /* Status */
   --success: #10b981;
@@ -34,12 +37,15 @@
   --foreground: #f9fafb;
   --card: #1a1a1a;
   --card-foreground: #f9fafb;
+  --popover: #1a1a1a;
+  --popover-foreground: #f9fafb;
   --muted: #1e1e1e;
   --muted-foreground: #9ca3af;
   --border: #374151;
   --input: #374151;
   --accent: #1a0f0f;
   --accent-foreground: #c95353;
+  --ring: #c95353;
 }
 
 * {

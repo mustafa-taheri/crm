@@ -60,7 +60,7 @@ export async function fetchCustomerStatusReport() {
         from_status,
         to_status,
         changed_at,
-        customer:customers(id, name, company),
+        customer:customers!customer_id(id, name, company),
         changer:profiles!changed_by(id, full_name)
       `,
       )
@@ -86,7 +86,7 @@ export async function fetchFollowupReport() {
       priority,
       status,
       completed_at,
-      customer:customers(name),
+      customer:customers!customer_id(name),
       assigned_user:profiles!assigned_user_id(id, full_name)
     `);
 

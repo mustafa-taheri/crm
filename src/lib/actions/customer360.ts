@@ -20,8 +20,8 @@ export async function fetchCustomer360(customerId: string) {
         `
         *,
         primary_owner:profiles!primary_owner_id(id, full_name),
-        phones:customer_phones(id, phone_number, country_code, is_primary),
-        tags:customer_tags(tag:tags(id, name))
+        phones:customer_phones!customer_id(id, phone_number, country_code, is_primary),
+        tags:customer_tags!customer_id(tag:tags!tag_id(id, name))
       `,
       )
       .eq("id", customerId)
@@ -36,15 +36,15 @@ export async function fetchCustomer360(customerId: string) {
         unread_count,
         last_message_at,
         last_customer_message_at,
-        assigned_user:profiles(id, full_name),
-        messages(
+        assigned_user:profiles!assigned_user_id(id, full_name),
+        messages:messages!conversation_id(
           id,
           direction,
           message_type,
           content,
           status,
           created_at,
-          sender:profiles(id, full_name)
+          sender:profiles!sender_user_id(id, full_name)
         )
       `,
       )
@@ -60,7 +60,7 @@ export async function fetchCustomer360(customerId: string) {
         description,
         metadata,
         created_at,
-        user:profiles(id, full_name)
+        user:profiles!user_id(id, full_name)
       `,
       )
       .eq("customer_id", customerId)
@@ -108,7 +108,7 @@ export async function fetchCustomer360(customerId: string) {
         read_at,
         replied_at,
         failed_at,
-        campaign:campaigns(id, name, created_at)
+        campaign:campaigns!campaign_id(id, name, created_at)
       `,
       )
       .eq("customer_id", customerId)

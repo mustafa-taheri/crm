@@ -17,14 +17,25 @@ export const customerSchema = z.object({
       "lost",
     ])
     .optional(),
-  primary_owner_id: z.string().uuid().optional().nullable(),
-  marketing_opt_out: z.boolean().optional(),
+  primary_owner_id: z
+    .string()
+    .uuid()
+    .optional()
+    .nullable()
+    .or(z.literal("").transform(() => null)),
+  marketing_opt_out: z.preprocess(
+    (val) => val === true || val === "true" || val === "on",
+    z.boolean().default(false),
+  ),
   phones: z
     .array(
       z.object({
         phone_number: z.string().min(7, "Phone number too short"),
         country_code: z.string().default("+91"),
-        is_primary: z.boolean().default(false),
+        is_primary: z.preprocess(
+          (val) => val === true || val === "true",
+          z.boolean().default(false),
+        ),
       }),
     )
     .min(1, "At least one phone number is required"),

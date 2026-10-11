@@ -20,13 +20,22 @@ create policy "Users can view all profiles" on public.profiles
 create policy "Users can update own profile" on public.profiles
   for update using (auth.uid() = user_id);
 
-create policy "Admins can manage profiles" on public.profiles
-  for all using (
-    exists (
-      select 1 from public.profiles p
-      where p.user_id = auth.uid() and p.role = 'admin'
-    )
+-- Helper function to check if current user is admin without triggering RLS recursion
+create or replace function public.is_admin()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from public.profiles
+    where user_id = auth.uid() and role = 'admin'
   );
+$$;
+
+create policy "Admins can manage profiles" on public.profiles
+  for all using (public.is_admin());
 
 -- Auto-create profile on signup
 create or replace function public.handle_new_user()
