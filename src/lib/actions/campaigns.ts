@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { whatsAppService } from "@/lib/whatsapp/service";
 import type { Database } from "@/types/supabase";
 
 type CampaignStatus = Database["public"]["Enums"]["campaign_status"];
@@ -312,7 +313,36 @@ export async function startOrScheduleCampaign(
 ) {
   const supabase = await createClient();
 
-  const { error } = await supabase
+  // 1. Fetch campaign details including template and media
+  const { data: campaign, error: campErr } = await supabase
+    .from("campaigns")
+    .select(
+      `
+      id,
+      name,
+      status,
+      template_id,
+      template:whatsapp_templates!template_id(id, name, content, status),
+      media:campaign_media!campaign_id(file_url, media_type)
+    `,
+    )
+    .eq("id", campaignId)
+    .single();
+
+  if (campErr || !campaign) {
+    return { error: campErr?.message || "Campaign not found" };
+  }
+
+  const template = campaign.template;
+  if (!template || template.status !== "approved") {
+    return {
+      error:
+        "Campaign must have an approved WhatsApp template before broadcasting.",
+    };
+  }
+
+  // Update campaign status
+  const { error: updateErr } = await supabase
     .from("campaigns")
     .update({
       status: sendNow ? "running" : "scheduled",
@@ -320,20 +350,210 @@ export async function startOrScheduleCampaign(
     })
     .eq("id", campaignId);
 
-  if (error) return { error: error.message };
+  if (updateErr) return { error: updateErr.message };
 
-  if (sendNow) {
-    // Mark pending recipients as sent/sending
-    await supabase
-      .from("campaign_recipients")
-      .update({
-        status: "sent",
-        sent_at: new Date().toISOString(),
-        delivered_at: new Date().toISOString(),
-      })
-      .eq("campaign_id", campaignId)
-      .eq("status", "pending");
+  if (!sendNow) {
+    revalidatePath(`/whatsapp/campaigns/${campaignId}`);
+    revalidatePath("/whatsapp/campaigns");
+    return { success: true };
   }
+
+  // 2. Fetch pending recipients for this campaign
+  const { data: recipients, error: recipErr } = await supabase
+    .from("campaign_recipients")
+    .select("id, customer_id")
+    .eq("campaign_id", campaignId)
+    .eq("status", "pending");
+
+  if (recipErr) return { error: recipErr.message };
+  if (!recipients || recipients.length === 0) {
+    await supabase
+      .from("campaigns")
+      .update({ status: "completed", completed_at: new Date().toISOString() })
+      .eq("id", campaignId);
+
+    revalidatePath(`/whatsapp/campaigns/${campaignId}`);
+    return { success: true };
+  }
+
+  // Fetch customer details and phones for these recipients
+  const customerIds = Array.from(new Set(recipients.map((r) => r.customer_id)));
+  const [{ data: customers }, { data: phones }] = await Promise.all([
+    supabase
+      .from("customers")
+      .select("id, name, marketing_opt_out")
+      .in("id", customerIds),
+    supabase
+      .from("customer_phones")
+      .select("customer_id, phone_number, country_code, is_primary")
+      .in("customer_id", customerIds),
+  ]);
+
+  const customerMap = new Map((customers || []).map((c) => [c.id, c]));
+  const phoneMap = new Map<
+    string,
+    { phone_number: string; country_code: string }
+  >();
+
+  for (const p of phones || []) {
+    const existing = phoneMap.get(p.customer_id);
+    if (!existing || p.is_primary) {
+      phoneMap.set(p.customer_id, {
+        phone_number: p.phone_number,
+        country_code: p.country_code || "+91",
+      });
+    }
+  }
+
+  const mediaUrl = campaign.media?.[0]?.file_url || undefined;
+  const BATCH_SIZE = 20;
+
+  // Process recipients in paced batches to prevent rate limit spikes
+  for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
+    const batch = recipients.slice(i, i + BATCH_SIZE);
+
+    await Promise.all(
+      batch.map(async (recipient) => {
+        const customer = customerMap.get(recipient.customer_id);
+        const phone = phoneMap.get(recipient.customer_id);
+
+        // WhatsApp Policy: Immediate compliance - skip opted-out recipients
+        if (!customer || customer.marketing_opt_out) {
+          await supabase
+            .from("campaign_recipients")
+            .update({
+              status: "opted_out",
+              opted_out_at: new Date().toISOString(),
+              error_details: "Contact opted out of marketing communications.",
+            })
+            .eq("id", recipient.id);
+          return;
+        }
+
+        if (!phone?.phone_number) {
+          await supabase
+            .from("campaign_recipients")
+            .update({
+              status: "failed",
+              failed_at: new Date().toISOString(),
+              error_details: "No valid phone number found for customer.",
+            })
+            .eq("id", recipient.id);
+          return;
+        }
+
+        const formattedPhone = `${phone.country_code}${phone.phone_number}`;
+        const templateVars = [customer.name || "Customer"];
+
+        // Render content for database storage
+        let renderedContent = template.content;
+        templateVars.forEach((val, idx) => {
+          renderedContent = renderedContent.replace(
+            new RegExp(`\\{\\{${idx + 1}\\}\\}`, "g"),
+            val,
+          );
+        });
+
+        // Dispatch via Meta WhatsApp API
+        const dispatchRes = await whatsAppService.sendTemplate(
+          formattedPhone,
+          template.name,
+          "en",
+          templateVars,
+          mediaUrl,
+        );
+
+        if (!dispatchRes.success) {
+          if (dispatchRes.isOptedOut) {
+            await supabase
+              .from("customers")
+              .update({ marketing_opt_out: true })
+              .eq("id", customer.id);
+          }
+
+          await supabase
+            .from("campaign_recipients")
+            .update({
+              status: dispatchRes.isOptedOut ? "opted_out" : "failed",
+              failed_at: new Date().toISOString(),
+              error_details: dispatchRes.error || "Meta API dispatch failed",
+            })
+            .eq("id", recipient.id);
+          return;
+        }
+
+        // Find or create conversation for the customer so broadcast shows in inbox thread
+        let { data: conv } = await supabase
+          .from("conversations")
+          .select("id")
+          .eq("customer_id", customer.id)
+          .eq("state", "open")
+          .maybeSingle();
+
+        if (!conv) {
+          const { data: newConv } = await supabase
+            .from("conversations")
+            .insert({
+              customer_id: customer.id,
+              state: "open",
+              last_message_at: new Date().toISOString(),
+            })
+            .select("id")
+            .single();
+          conv = newConv;
+        } else {
+          await supabase
+            .from("conversations")
+            .update({ last_message_at: new Date().toISOString() })
+            .eq("id", conv.id);
+        }
+
+        let createdMsgId: string | null = null;
+        if (conv) {
+          const { data: msg } = await supabase
+            .from("messages")
+            .insert({
+              conversation_id: conv.id,
+              customer_id: customer.id,
+              direction: "outbound",
+              message_type: mediaUrl ? "document" : "text",
+              content: renderedContent,
+              whatsapp_message_id: dispatchRes.messageId || null,
+              status: "sent",
+              campaign_id: campaignId,
+              sent_at: new Date().toISOString(),
+            })
+            .select("id")
+            .single();
+
+          createdMsgId = msg?.id || null;
+        }
+
+        await supabase
+          .from("campaign_recipients")
+          .update({
+            status: "sent",
+            sent_at: new Date().toISOString(),
+            message_id: createdMsgId,
+          })
+          .eq("id", recipient.id);
+      }),
+    );
+
+    // Pace batches with 100ms interval to protect Meta rate limit
+    if (i + BATCH_SIZE < recipients.length) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+
+  // Mark campaign completed
+  await supabase
+    .from("campaigns")
+    .update({
+      status: "completed",
+      completed_at: new Date().toISOString(),
+    })
+    .eq("id", campaignId);
 
   revalidatePath(`/whatsapp/campaigns/${campaignId}`);
   revalidatePath("/whatsapp/campaigns");

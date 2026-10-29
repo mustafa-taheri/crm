@@ -23,7 +23,7 @@ export const FOLLOWUP_FILTERS = [
 
 // ─── Media limits (CRM-side validation defaults) ─────────────────
 export const MEDIA_LIMITS = {
-  image: 10 * 1024 * 1024, // 10 MB
+  image: 5 * 1024 * 1024, // 5 MB (WhatsApp Cloud API limit)
   video: 16 * 1024 * 1024, // 16 MB
   document: 100 * 1024 * 1024, // 100 MB
 } as const;

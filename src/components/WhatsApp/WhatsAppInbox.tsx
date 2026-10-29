@@ -15,12 +15,19 @@ interface WhatsAppInboxProps {
   initialConversations: ConversationItem[];
   initialActiveId?: string | null;
   salespeople: { id: string; full_name: string }[];
+  approvedTemplates?: {
+    id: string;
+    name: string;
+    content: string;
+    status: string;
+  }[];
 }
 
 export function WhatsAppInbox({
   initialConversations,
   initialActiveId,
   salespeople,
+  approvedTemplates = [],
 }: WhatsAppInboxProps) {
   const router = useRouter();
   const [conversations, setConversations] =
@@ -113,6 +120,7 @@ export function WhatsAppInbox({
           lastCustomerMessageAt={activeDetails.last_customer_message_at}
           messages={activeDetails.messages || []}
           onMessageSent={handleMessageSent}
+          approvedTemplates={approvedTemplates}
         />
       ) : (
         <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground bg-muted/20">

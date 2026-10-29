@@ -79,27 +79,40 @@ export function TemplateForm() {
             <Label htmlFor="tpl-name">Template Name *</Label>
             <Input
               id="tpl-name"
-              placeholder="e.g. Diwali Corporate Gifting 2026"
+              placeholder="e.g. diwali_corporate_gifting_2026"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) =>
+                setName(
+                  e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"),
+                )
+              }
+              maxLength={128}
               required
             />
+            <p className="text-[11px] text-muted-foreground">
+              Meta WhatsApp API requires lowercase alphanumeric characters and underscores only (e.g. <code>festive_promo_offer</code>).
+            </p>
           </div>
 
           <div className="space-y-1.5">
             <Label htmlFor="tpl-content">Template Content *</Label>
             <Textarea
               id="tpl-content"
-              placeholder="Hello {{1}}, explore our exclusive corporate gifting collection for this festive season..."
+              placeholder="Hello {{1}}, explore our exclusive corporate gifting collection for this festive season! Reply STOP to opt out."
               value={content}
               onChange={(e) => setContent(e.target.value)}
               className="min-h-[100px] text-sm"
               required
             />
-            <p className="text-[11px] text-muted-foreground">
-              Tip: Use placeholders like <code>&#123;&#123;1&#125;&#125;</code>{" "}
-              for custom variables (e.g. Customer Name).
-            </p>
+            <div className="rounded-md bg-blue-50/60 dark:bg-blue-950/30 p-2.5 border border-blue-200/60 dark:border-blue-800 text-[11px] text-blue-900 dark:text-blue-300 space-y-1">
+              <p className="font-semibold">WhatsApp Compliance Policy Guideline:</p>
+              <p>
+                - Use <code>&#123;&#123;1&#125;&#125;</code> for custom variables (e.g. Customer Name).
+              </p>
+              <p>
+                - Always include an opt-out instruction (e.g. <em>&quot;Reply STOP to unsubscribe&quot;</em>) in promotional messages to protect your phone number Quality Rating and prevent account suspension.
+              </p>
+            </div>
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-2">

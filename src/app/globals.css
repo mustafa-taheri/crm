@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 :root {
   /* Brand */
@@ -7,32 +8,6 @@
   --primary-foreground: #ffffff;
 
   /* Neutral */
-  --background: #ffffff;
-  --foreground: #0a0a0a;
-  --card: #ffffff;
-  --card-foreground: #0a0a0a;
-  --popover: #ffffff;
-  --popover-foreground: #0a0a0a;
-  --muted: #f3f4f6;
-  --muted-foreground: #6b7280;
-  --border: #e5e7eb;
-  --input: #e5e7eb;
-  --accent: #fef2f2;
-  --accent-foreground: #9d2b2b;
-  --ring: #9d2b2b;
-
-  /* Status */
-  --success: #10b981;
-  --success-light: #d1fae5;
-  --warning: #f59e0b;
-  --warning-light: #fef3c7;
-  --error: #ef4444;
-  --error-light: #fee2e2;
-  --info: #3b82f6;
-  --info-light: #dbeafe;
-}
-
-.dark {
   --background: #0a0a0a;
   --foreground: #f9fafb;
   --card: #1a1a1a;
@@ -46,6 +21,16 @@
   --accent: #1a0f0f;
   --accent-foreground: #c95353;
   --ring: #c95353;
+
+  /* Status */
+  --success: #10b981;
+  --success-light: #d1fae5;
+  --warning: #f59e0b;
+  --warning-light: #fef3c7;
+  --error: #ef4444;
+  --error-light: #fee2e2;
+  --info: #3b82f6;
+  --info-light: #dbeafe;
 }
 
 * {

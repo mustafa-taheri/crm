@@ -53,4 +53,13 @@ describe("AppLayout", () => {
     )
     expect(screen.getByRole("button", { name: /sign out/i })).toBeInTheDocument()
   })
+
+  it("does not show a theme switch", () => {
+    render(
+      <AppLayout>
+        <div>Content</div>
+      </AppLayout>
+    )
+    expect(screen.queryByTitle(/switch to (light|dark) mode/i)).not.toBeInTheDocument()
+  })
 })

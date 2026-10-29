@@ -1,7 +1,7 @@
 # Tohfawala CRM — Design System
 
 > Primary brand color: **#9d2b2b** (deep burgundy red)
-> Secondary: **#ffffff** (white) and **#0a0a0a** (near-black text)
+> Theme: **dark only**, with white text and near-black surfaces
 
 ---
 
@@ -52,22 +52,22 @@
 | `Unread` | `#ef4444` (red) | `#fee2e2` |
 | `Overdue` | `#ef4444` (red) | `#fee2e2` |
 
-### 1.3 Dark Mode Tokens
+### 1.3 Dark Theme Tokens
 
-| Element | Light | Dark |
-|---------|-------|------|
-| `--background` | `#ffffff` | `#0a0a0a` |
-| `--foreground` | `#0a0a0a` | `#f9fafb` |
-| `--card` | `#ffffff` | `#1a1a1a` |
-| `--card-foreground` | `#0a0a0a` | `#f9fafb` |
-| `--primary` | `#9d2b2b` | `#9d2b2b` |
-| `--primary-foreground` | `#ffffff` | `#ffffff` |
-| `--muted` | `#f3f4f6` | `#1e1e1e` |
-| `--muted-foreground` | `#6b7280` | `#9ca3af` |
-| `--border` | `#e5e7eb` | `#374151` |
-| `--input` | `#e5e7eb` | `#374151` |
-| `--sidebar` | `#f8f9fa` | `#151515` |
-| `--sidebar-border` | `#e5e7eb` | `#374151` |
+| Element | Value |
+|---------|-------|
+| `--background` | `#0a0a0a` |
+| `--foreground` | `#f9fafb` |
+| `--card` | `#1a1a1a` |
+| `--card-foreground` | `#f9fafb` |
+| `--primary` | `#9d2b2b` |
+| `--primary-foreground` | `#ffffff` |
+| `--muted` | `#1e1e1e` |
+| `--muted-foreground` | `#9ca3af` |
+| `--border` | `#374151` |
+| `--input` | `#374151` |
+| `--sidebar` | `#151515` |
+| `--sidebar-border` | `#374151` |
 
 ---
 

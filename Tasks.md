@@ -273,3 +273,29 @@
 - [x] Create `.env.local.example` with Supabase & WhatsApp Cloud API environment variables
 - [x] Create SQL migrations in `supabase/migrations/` (001 through 006)
 - [x] Create `SETUP_AND_RUN.md` step-by-step setup guide
+
+---
+
+## Phase 12: WhatsApp Policy Compliance & Quality Protection
+
+### 12.1 Opt-Out & Opt-In Automation
+- [x] Automated keyword detection (`STOP`, `UNSUBSCRIBE`, `CANCEL`, `QUIT`, `OPTOUT`) in webhook route
+- [x] Instant customer `marketing_opt_out = true` flag update on opt-out
+- [x] Immediate cancellation of pending campaign recipients upon opt-out
+- [x] Opt-in keyword detection (`START`, `UNSTOP`, `SUBSCRIBE`) to restore customer messaging preference
+- [x] Handling of Meta error code `131056` (User opted out / blocked) in status webhook to auto-opt out contacts and protect phone Quality Rating
+
+### 12.2 24-Hour Customer Care Window Compliance
+- [x] Strict backend enforcement in `sendMessage`: rejects free-form session messages when window has expired
+- [x] Created `sendTemplateMessage` server action for compliant re-engagement using approved templates
+- [x] Frontend `ConversationView`: disables free-form input with warning notice when outside the 24h window
+- [x] Modal template selector with customer name placeholder rendering for 1-click re-engagement
+
+### 12.3 Broadcast Pacing & Quality Rating Safeguards
+- [x] Pre-dispatch verification: filters out all opted-out customers prior to campaign broadcast
+- [x] Batch pacing: batches of 20 recipients with paced intervals to avoid Meta Cloud API rate limit spikes
+- [x] Outbound broadcast messages synced to `messages` table for continuous conversation history
+- [x] Meta template naming format validation (`[a-z0-9_]`) in `TemplateForm`
+- [x] Media upload limits synchronized to WhatsApp Cloud API standards (5MB for images)
+- [x] E.164 phone number normalization without `+` prefixes for Meta Cloud API endpoints
+

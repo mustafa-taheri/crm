@@ -4,6 +4,7 @@ import {
   getOrCreateConversationForCustomer,
 } from "@/lib/actions/conversations";
 import { fetchSalespeople } from "@/lib/actions/customers";
+import { fetchTemplates } from "@/lib/actions/campaigns";
 
 interface InboxPageProps {
   searchParams: Promise<{
@@ -25,16 +26,22 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
     );
   }
 
-  const [conversations, salespeople] = await Promise.all([
+  const [conversations, salespeople, templates] = await Promise.all([
     fetchConversations(params.filter || "all"),
     fetchSalespeople(),
+    fetchTemplates(),
   ]);
+
+  const approvedTemplates = (templates || []).filter(
+    (t) => t.status === "approved",
+  );
 
   return (
     <WhatsAppInbox
       initialConversations={conversations as any}
       initialActiveId={initialActiveId}
       salespeople={salespeople}
+      approvedTemplates={approvedTemplates}
     />
   );
 }

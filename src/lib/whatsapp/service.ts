@@ -4,6 +4,9 @@ export interface MessageResult {
   success: boolean;
   messageId?: string;
   error?: string;
+  errorCode?: number;
+  isOutsideWindow?: boolean;
+  isOptedOut?: boolean;
 }
 
 export interface WhatsAppService {
@@ -25,6 +28,22 @@ export interface WhatsAppService {
   verifyWebhookChallenge(token: string, challenge: string): string | null;
 }
 
+/**
+ * Format phone number to WhatsApp E.164 without '+', spaces, or dashes.
+ * Defaults to country code '91' (India) if a standard 10-digit number is provided.
+ */
+export function formatToWhatsAppE164(
+  phone: string,
+  defaultCountryCode = "91",
+): string {
+  let cleaned = phone.replace(/\D/g, "");
+  cleaned = cleaned.replace(/^0+/, "");
+  if (cleaned.length === 10) {
+    return `${defaultCountryCode}${cleaned}`;
+  }
+  return cleaned;
+}
+
 export class MetaWhatsAppAdapter implements WhatsAppService {
   private accessToken: string;
   private phoneNumberId: string;
@@ -43,10 +62,35 @@ export class MetaWhatsAppAdapter implements WhatsAppService {
     return `https://graph.facebook.com/${this.apiVersion}/${this.phoneNumberId}/messages`;
   }
 
+  private parseMetaError(json: {
+    error?: {
+      code?: number;
+      message?: string;
+      error_data?: { details?: string };
+    };
+  }): {
+    error: string;
+    errorCode?: number;
+    isOutsideWindow?: boolean;
+    isOptedOut?: boolean;
+  } {
+    const errObj = json.error || {};
+    const errorCode = errObj.code;
+    const message =
+      errObj.error_data?.details || errObj.message || "Meta API error";
+
+    return {
+      error: errorCode ? `[${errorCode}] ${message}` : message,
+      errorCode,
+      isOutsideWindow: errorCode === 131047,
+      isOptedOut: errorCode === 131056,
+    };
+  }
+
   async sendText(to: string, text: string): Promise<MessageResult> {
-    if (!this.accessToken || !this.phoneNumberId) {
-      // Return mock success in development/staging mode
-      console.log(`[WhatsApp Mock] Sending text to ${to}: ${text}`);
+    const formattedTo = formatToWhatsAppE164(to);
+
+    if (!this.accessToken || !this.phoneNumberId || this.accessToken.startsWith("mock-")) {
       return { success: true, messageId: `mock_msg_${Date.now()}` };
     }
 
@@ -60,7 +104,7 @@ export class MetaWhatsAppAdapter implements WhatsAppService {
         body: JSON.stringify({
           messaging_product: "whatsapp",
           recipient_type: "individual",
-          to: to.replace(/\D/g, ""),
+          to: formattedTo,
           type: "text",
           text: { preview_url: true, body: text },
         }),
@@ -70,7 +114,7 @@ export class MetaWhatsAppAdapter implements WhatsAppService {
       if (!res.ok) {
         return {
           success: false,
-          error: json.error?.message || "Meta API error",
+          ...this.parseMetaError(json),
         };
       }
 
@@ -87,15 +131,14 @@ export class MetaWhatsAppAdapter implements WhatsAppService {
     variables: string[] = [],
     mediaUrl?: string,
   ): Promise<MessageResult> {
-    if (!this.accessToken || !this.phoneNumberId) {
-      console.log(
-        `[WhatsApp Mock] Sending template "${templateName}" to ${to}`,
-      );
+    const formattedTo = formatToWhatsAppE164(to);
+
+    if (!this.accessToken || !this.phoneNumberId || this.accessToken.startsWith("mock-")) {
       return { success: true, messageId: `mock_tpl_${Date.now()}` };
     }
 
     try {
-      const components: any[] = [];
+      const components: Record<string, unknown>[] = [];
 
       if (mediaUrl) {
         components.push({
@@ -124,7 +167,7 @@ export class MetaWhatsAppAdapter implements WhatsAppService {
         },
         body: JSON.stringify({
           messaging_product: "whatsapp",
-          to: to.replace(/\D/g, ""),
+          to: formattedTo,
           type: "template",
           template: {
             name: templateName,
@@ -138,7 +181,7 @@ export class MetaWhatsAppAdapter implements WhatsAppService {
       if (!res.ok) {
         return {
           success: false,
-          error: json.error?.message || "Meta Template API error",
+          ...this.parseMetaError(json),
         };
       }
 
@@ -154,13 +197,14 @@ export class MetaWhatsAppAdapter implements WhatsAppService {
     mediaUrl: string,
     caption?: string,
   ): Promise<MessageResult> {
-    if (!this.accessToken || !this.phoneNumberId) {
-      console.log(`[WhatsApp Mock] Sending media (${mediaType}) to ${to}`);
+    const formattedTo = formatToWhatsAppE164(to);
+
+    if (!this.accessToken || !this.phoneNumberId || this.accessToken.startsWith("mock-")) {
       return { success: true, messageId: `mock_media_${Date.now()}` };
     }
 
     try {
-      const mediaPayload: Record<string, any> = { link: mediaUrl };
+      const mediaPayload: Record<string, string> = { link: mediaUrl };
       if (
         caption &&
         (mediaType === "image" ||
@@ -178,7 +222,7 @@ export class MetaWhatsAppAdapter implements WhatsAppService {
         },
         body: JSON.stringify({
           messaging_product: "whatsapp",
-          to: to.replace(/\D/g, ""),
+          to: formattedTo,
           type: mediaType,
           [mediaType]: mediaPayload,
         }),
@@ -188,7 +232,7 @@ export class MetaWhatsAppAdapter implements WhatsAppService {
       if (!res.ok) {
         return {
           success: false,
-          error: json.error?.message || "Meta Media API error",
+          ...this.parseMetaError(json),
         };
       }
 
@@ -199,17 +243,18 @@ export class MetaWhatsAppAdapter implements WhatsAppService {
   }
 
   validateWebhookSignature(rawBody: string, signature: string): boolean {
-    if (!this.appSecret) return true; // Bypass in local development
+    if (!this.appSecret) return true; // Bypass in local dev when secret is not configured
     try {
       const hash = crypto
         .createHmac("sha256", this.appSecret)
         .update(rawBody)
         .digest("hex");
       const expected = `sha256=${hash}`;
-      return crypto.timingSafeEqual(
-        Buffer.from(expected),
-        Buffer.from(signature),
-      );
+      const expectedBuf = Buffer.from(expected);
+      const sigBuf = Buffer.from(signature);
+
+      if (expectedBuf.length !== sigBuf.length) return false;
+      return crypto.timingSafeEqual(expectedBuf, sigBuf);
     } catch {
       return false;
     }

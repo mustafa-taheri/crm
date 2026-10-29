@@ -2,9 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { whatsAppService } from "@/lib/whatsapp/service";
 import type { Database } from "@/types/supabase";
-
-type ConversationState = Database["public"]["Enums"]["conversation_state"];
 
 export async function fetchConversations(
   filter: "all" | "unread" | "mine" = "all",
@@ -54,7 +53,7 @@ export async function fetchConversations(
     query = query.eq("assigned_user_id", profile.id);
   }
 
-  let { data, error } = await query;
+  const { data, error } = await query;
   if (!error && data) return data;
 
   // Fallback: If PostgREST relationship fails (PGRST200 / stale cache), fetch and assemble manually
@@ -291,6 +290,61 @@ export async function sendMessage(
     Date.now() - new Date(conv.last_customer_message_at).getTime() >
       24 * 60 * 60 * 1000;
 
+  // WhatsApp Policy: Free-form messages are strictly forbidden outside the 24-hour window
+  if (isOutsideWindow) {
+    return {
+      success: false,
+      isOutsideWindow: true,
+      error:
+        "The 24-hour WhatsApp messaging window has expired. WhatsApp policy requires sending an approved template to re-open the conversation.",
+    };
+  }
+
+  // Fetch customer's primary phone number
+  const { data: phones } = await supabase
+    .from("customer_phones")
+    .select("phone_number, country_code, is_primary")
+    .eq("customer_id", conv.customer_id);
+
+  const phoneRecord =
+    phones?.find((p) => p.is_primary) || phones?.[0];
+
+  if (!phoneRecord?.phone_number) {
+    return {
+      success: false,
+      error: "Customer does not have a registered phone number.",
+    };
+  }
+
+  const recipientPhone = `${phoneRecord.country_code || "+91"}${phoneRecord.phone_number}`;
+
+  // Dispatch message via Meta WhatsApp Cloud API service
+  let dispatchRes;
+  if (fileUrl && mediaType) {
+    dispatchRes = await whatsAppService.sendMedia(
+      recipientPhone,
+      mediaType as "image" | "document" | "video",
+      fileUrl,
+      content,
+    );
+  } else {
+    dispatchRes = await whatsAppService.sendText(recipientPhone, content);
+  }
+
+  if (!dispatchRes.success) {
+    if (dispatchRes.isOptedOut) {
+      await supabase
+        .from("customers")
+        .update({ marketing_opt_out: true })
+        .eq("id", conv.customer_id);
+    }
+    return {
+      success: false,
+      isOutsideWindow: dispatchRes.isOutsideWindow,
+      error: dispatchRes.error || "Failed to dispatch message via WhatsApp.",
+    };
+  }
+
   // Insert message record
   const { data: message, error: msgError } = await supabase
     .from("messages")
@@ -299,8 +353,10 @@ export async function sendMessage(
       customer_id: conv.customer_id,
       sender_user_id: profile?.id || null,
       direction: "outbound",
-      message_type: (mediaType as any) || "text",
+      message_type:
+        (mediaType as Database["public"]["Enums"]["message_type"]) || "text",
       content,
+      whatsapp_message_id: dispatchRes.messageId || null,
       status: "sent",
       sent_at: new Date().toISOString(),
     })
@@ -313,7 +369,7 @@ export async function sendMessage(
   if (fileUrl && mediaType) {
     await supabase.from("message_media").insert({
       message_id: message.id,
-      media_type: mediaType as any,
+      media_type: mediaType as "image" | "video" | "document" | "pdf",
       file_url: fileUrl,
     });
   }
@@ -338,7 +394,149 @@ export async function sendMessage(
   }
 
   revalidatePath("/whatsapp/inbox");
-  return { success: true, isOutsideWindow };
+  return { success: true, isOutsideWindow: false };
+}
+
+export async function sendTemplateMessage(
+  conversationId: string,
+  templateId: string,
+  variables: string[] = [],
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, full_name")
+    .eq("user_id", user.id)
+    .single();
+
+  const { data: conv } = await supabase
+    .from("conversations")
+    .select("id, customer_id")
+    .eq("id", conversationId)
+    .single();
+
+  if (!conv) return { success: false, error: "Conversation not found" };
+
+  const { data: customer } = await supabase
+    .from("customers")
+    .select("id, name, marketing_opt_out")
+    .eq("id", conv.customer_id)
+    .single();
+
+  if (!customer) return { success: false, error: "Customer not found" };
+
+  if (customer.marketing_opt_out) {
+    return {
+      success: false,
+      error:
+        "Customer has opted out of WhatsApp messages. Template messages cannot be sent to opted-out contacts.",
+    };
+  }
+
+  const { data: template } = await supabase
+    .from("whatsapp_templates")
+    .select("*")
+    .eq("id", templateId)
+    .single();
+
+  if (!template) return { success: false, error: "Template not found" };
+
+  if (template.status !== "approved") {
+    return {
+      success: false,
+      error: "Only approved WhatsApp templates can be sent.",
+    };
+  }
+
+  const { data: phones } = await supabase
+    .from("customer_phones")
+    .select("phone_number, country_code, is_primary")
+    .eq("customer_id", conv.customer_id);
+
+  const phoneRecord =
+    phones?.find((p) => p.is_primary) || phones?.[0];
+
+  if (!phoneRecord?.phone_number) {
+    return {
+      success: false,
+      error: "Customer does not have a registered phone number.",
+    };
+  }
+
+  const recipientPhone = `${phoneRecord.country_code || "+91"}${phoneRecord.phone_number}`;
+
+  const templateVars =
+    variables.length > 0 ? variables : [customer.name || "Customer"];
+
+  let renderedContent = template.content;
+  templateVars.forEach((val, idx) => {
+    renderedContent = renderedContent.replace(
+      new RegExp(`\\{\\{${idx + 1}\\}\\}`, "g"),
+      val,
+    );
+  });
+
+  const dispatchRes = await whatsAppService.sendTemplate(
+    recipientPhone,
+    template.name,
+    "en",
+    templateVars,
+  );
+
+  if (!dispatchRes.success) {
+    if (dispatchRes.isOptedOut) {
+      await supabase
+        .from("customers")
+        .update({ marketing_opt_out: true })
+        .eq("id", conv.customer_id);
+    }
+    return {
+      success: false,
+      error:
+        dispatchRes.error || "Failed to dispatch template message via WhatsApp.",
+    };
+  }
+
+  const { data: message, error: msgError } = await supabase
+    .from("messages")
+    .insert({
+      conversation_id: conversationId,
+      customer_id: conv.customer_id,
+      sender_user_id: profile?.id || null,
+      direction: "outbound",
+      message_type: "text",
+      content: renderedContent,
+      whatsapp_message_id: dispatchRes.messageId || null,
+      status: "sent",
+      sent_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+
+  if (msgError) return { success: false, error: msgError.message };
+
+  await supabase
+    .from("conversations")
+    .update({ last_message_at: new Date().toISOString() })
+    .eq("id", conversationId);
+
+  if (profile) {
+    await supabase.from("activities").insert({
+      customer_id: conv.customer_id,
+      conversation_id: conversationId,
+      user_id: profile.id,
+      activity_type: "message_sent",
+      description: `Sent approved WhatsApp template: "${template.name}"`,
+    });
+  }
+
+  revalidatePath("/whatsapp/inbox");
+  return { success: true, messageId: message.id };
 }
 
 export async function assignConversation(

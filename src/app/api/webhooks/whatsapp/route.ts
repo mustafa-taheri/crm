@@ -12,6 +12,12 @@ function getAdminClient() {
   );
 }
 
+// WhatsApp Policy: Immediate compliance with customer opt-out & opt-in keywords
+const OPT_OUT_REGEX =
+  /^(STOP|STOPALL|UNSUBSCRIBE|CANCEL|END|QUIT|OPTOUT|OPT\s*OUT)$/i;
+const OPT_IN_REGEX = /^(START|UNSTOP|SUBSCRIBE)$/i;
+
+
 // ─── GET: Meta Webhook Verification ──────────────────────────────
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -87,15 +93,44 @@ export async function POST(request: NextRequest) {
               .update({ read_at: timestamp, status: "read" })
               .eq("message_id", wamid);
           } else if (newStatus === "failed") {
+            const errCode = statusObj.errors?.[0]?.code;
+            const errDetails =
+              statusObj.errors?.[0]?.title ||
+              statusObj.errors?.[0]?.message ||
+              "Delivery failed";
+
             await supabase
               .from("campaign_recipients")
               .update({
                 failed_at: timestamp,
                 status: "failed",
-                error_details:
-                  statusObj.errors?.[0]?.title || "Delivery failed",
+                error_details: errCode ? `[${errCode}] ${errDetails}` : errDetails,
               })
               .eq("message_id", wamid);
+
+            // WhatsApp Policy Protection: Error 131056 means user opted out or blocked
+            if (errCode === 131056) {
+              const { data: recipient } = await supabase
+                .from("campaign_recipients")
+                .select("customer_id")
+                .eq("message_id", wamid)
+                .maybeSingle();
+
+              const recipientCustId = recipient?.customer_id;
+              if (recipientCustId) {
+                await supabase
+                  .from("customers")
+                  .update({ marketing_opt_out: true })
+                  .eq("id", recipientCustId);
+
+                await supabase.from("activities").insert({
+                  customer_id: recipientCustId,
+                  activity_type: "customer_opted_out",
+                  description:
+                    "User blocked or opted out on WhatsApp (Meta error 131056). Marketing opt-out applied.",
+                });
+              }
+            }
           }
         }
       }
@@ -240,6 +275,40 @@ export async function POST(request: NextRequest) {
             activity_type: "message_received",
             description: `Received WhatsApp reply: "${textContent.slice(0, 40)}"`,
           });
+
+          // WhatsApp Policy Compliance: Honor opt-out / opt-in keywords immediately
+          const trimmed = textContent.trim();
+          if (msgType === "text" && OPT_OUT_REGEX.test(trimmed)) {
+            await supabase
+              .from("customers")
+              .update({ marketing_opt_out: true })
+              .eq("id", customerId);
+
+            await supabase
+              .from("campaign_recipients")
+              .update({ status: "opted_out", opted_out_at: timestamp })
+              .eq("customer_id", customerId)
+              .eq("status", "pending");
+
+            await supabase.from("activities").insert({
+              customer_id: customerId,
+              conversation_id: conv.id,
+              activity_type: "customer_opted_out",
+              description: `Customer requested opt-out via WhatsApp keyword: "${trimmed}"`,
+            });
+          } else if (msgType === "text" && OPT_IN_REGEX.test(trimmed)) {
+            await supabase
+              .from("customers")
+              .update({ marketing_opt_out: false })
+              .eq("id", customerId);
+
+            await supabase.from("activities").insert({
+              customer_id: customerId,
+              conversation_id: conv.id,
+              activity_type: "customer_opted_in",
+              description: `Customer re-subscribed to WhatsApp messaging via keyword: "${trimmed}"`,
+            });
+          }
         }
       }
     }
