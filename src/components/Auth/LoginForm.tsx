@@ -57,7 +57,7 @@ export function LoginForm() {
           autoComplete="email"
           {...register("email")}
           disabled={isLoading}
-          className={errors.email ? "border-red-500" : ""}
+          className={`text-zinc-700 placeholder:text-zinc-500 focus-visible:ring-zinc-400 ${errors.email ? "border-red-500 focus-visible:ring-red-500" : ""}`}
         />
         {errors.email && (
           <p className="text-xs text-red-500">{errors.email.message}</p>
@@ -75,7 +75,7 @@ export function LoginForm() {
           autoComplete="current-password"
           {...register("password")}
           disabled={isLoading}
-          className={errors.password ? "border-red-500" : ""}
+          className={`text-zinc-700 placeholder:text-zinc-500 focus-visible:ring-zinc-400 ${errors.password ? "border-red-500 focus-visible:ring-red-500" : ""}`}
         />
         {errors.password && (
           <p className="text-xs text-red-500">{errors.password.message}</p>
