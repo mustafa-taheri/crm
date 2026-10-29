@@ -47,7 +47,9 @@ export function LoginForm() {
       )}
 
       <div className="space-y-2">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="email" className="text-zinc-700">
+          Email
+        </Label>
         <Input
           id="email"
           type="email"
@@ -63,7 +65,9 @@ export function LoginForm() {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="password">Password</Label>
+        <Label htmlFor="password" className="text-zinc-700">
+          Password
+        </Label>
         <Input
           id="password"
           type="password"
@@ -80,7 +84,7 @@ export function LoginForm() {
 
       <Button
         type="submit"
-        className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+        className="w-full bg-zinc-100 text-zinc-900 hover:bg-zinc-200 font-medium transition-colors"
         disabled={isLoading}
       >
         {isLoading ? (
