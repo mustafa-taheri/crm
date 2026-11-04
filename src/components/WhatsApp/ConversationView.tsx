@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { LoadingButton } from "@/components/LoadingButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,6 +15,7 @@ import {
 import { sendMessage, sendTemplateMessage } from "@/lib/actions/conversations";
 import { formatTime } from "@/lib/helpers/format";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 import {
   Send,
   Image as ImageIcon,
@@ -312,15 +314,20 @@ export function ConversationView({
             onChange={(e) => setInputText(e.target.value)}
             className="flex-1 h-10"
           />
-          <Button
+          <LoadingButton
             type="submit"
             disabled={sending || !inputText.trim()}
-            size="default"
             className="h-10 px-4"
           >
-            <Send className="h-4 w-4 mr-1.5" />
-            {sending ? "Sending..." : "Send"}
-          </Button>
+            {sending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Sending
+              </>
+            ) : (
+              "Send"
+            )}
+          </LoadingButton>
         </form>
       )}
 
@@ -375,7 +382,7 @@ export function ConversationView({
                     {renderedPreview}
                   </div>
                   <p className="text-[11px] text-muted-foreground">
-                    Placeholder <code>&#123;&#123;1&#125;&#125;</code> has been
+                    Placeholder <code>&#123;&#125;1&#125;</code> has been
                     automatically populated with customer name:{" "}
                     <strong>{customerName}</strong>.
                   </p>

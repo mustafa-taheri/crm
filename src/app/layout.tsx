@@ -1,3 +1,4 @@
+import { PageLoader } from "@/components/PageLoader";
 import type { Metadata } from "next";
 import "./globals.css";
 
@@ -17,7 +18,7 @@ export default function RootLayout({
         className="min-h-screen bg-background text-foreground font-sans antialiased"
         suppressHydrationWarning
       >
-        {children}
+        <PageLoader>{children}</PageLoader>
       </body>
     </html>
   );

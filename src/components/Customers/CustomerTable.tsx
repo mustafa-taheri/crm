@@ -66,7 +66,9 @@ export function CustomerTable({
           Try adjusting your search or filters, or add a new customer.
         </p>
         <Link href="/customers/add">
-          <Button size="sm">Add Customer</Button>
+          <Button size="sm" variant={"outline"}>
+            Add Customer
+          </Button>
         </Link>
       </div>
     );

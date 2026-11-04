@@ -109,7 +109,9 @@ export default async function DashboardPage() {
 
         <div className="flex items-center gap-2">
           <Link href="/customers/add">
-            <Button size="sm">Add Customer</Button>
+            <Button size="sm" variant="outline">
+              Add Customer
+            </Button>
           </Link>
           <Link href="/whatsapp/inbox">
             <Button variant="outline" size="sm">

@@ -79,7 +79,7 @@ export default async function CustomersPage({
             </Button>
           </Link>
           <Link href="/customers/add">
-            <Button size="sm" className="h-9">
+            <Button size="sm" variant="outline" className="h-9">
               <Plus className="mr-1.5 h-4 w-4" />
               Add Customer
             </Button>
