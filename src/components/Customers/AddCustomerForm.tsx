@@ -324,18 +324,18 @@ export function AddCustomerForm({ tags, salespeople }: AddCustomerFormProps) {
               {tags.map((tag) => {
                 const isSelected = selectedTagIds.includes(tag.id);
                 return (
-                  <button
+                  <Button
                     key={tag.id}
                     type="button"
                     onClick={() => toggleTag(tag.id)}
                     className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
                       isSelected
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-background text-muted-foreground border-border hover:border-primary/50"
+                        ? "bg-zinc-200 text-zinc-800 border-primary shadow-sm"
+                        : "bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground"
                     }`}
                   >
                     {tag.name}
-                  </button>
+                  </Button>
                 );
               })}
               {tags.length === 0 && (
