@@ -30,14 +30,6 @@ export interface ConversationItem {
     tags?: { tag: { id: string; name: string } }[] | null;
   } | null;
   assigned_user?: { id: string; full_name: string } | null;
-  messages?:
-    | {
-        id: string;
-        content: string | null;
-        direction: string;
-        created_at: string;
-      }[]
-    | null;
 }
 
 interface ConversationListProps {
@@ -111,8 +103,6 @@ export function ConversationList({
         ) : (
           filtered.map((c) => {
             const isActive = c.id === activeId;
-            const lastMsg =
-              c.messages && c.messages.length > 0 ? c.messages[0] : null;
 
             return (
               <button
@@ -141,9 +131,6 @@ export function ConversationList({
                 )}
 
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs text-muted-foreground truncate flex-1">
-                    {lastMsg?.content || "No messages"}
-                  </p>
                   {c.unread_count > 0 && (
                     <Badge
                       variant="destructive"

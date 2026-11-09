@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
   ConversationList,
@@ -29,33 +28,33 @@ export function WhatsAppInbox({
   salespeople,
   approvedTemplates = [],
 }: WhatsAppInboxProps) {
-  const router = useRouter();
-  const [conversations, setConversations] =
-    React.useState<ConversationItem[]>(initialConversations);
+  const [conversations] = React.useState<ConversationItem[]>(initialConversations);
   const [activeId, setActiveId] = React.useState<string | null>(
     initialActiveId ||
       (initialConversations.length > 0 ? initialConversations[0].id : null),
   );
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [activeDetails, setActiveDetails] = React.useState<any>(null);
   const [filter, setFilter] = React.useState<"all" | "unread" | "mine">("all");
   const [searchQuery, setSearchQuery] = React.useState("");
-  const [loadingDetails, setLoadingDetails] = React.useState(false);
+  const pendingVersion = React.useRef(0);
 
-  // Load active conversation details
+  // Load active conversation details. Async-only: callers clear stale data
+  // synchronously when switching conversations.
   const loadDetails = React.useCallback(async (id: string) => {
-    setLoadingDetails(true);
+    const version = ++pendingVersion.current;
     try {
       const data = await fetchConversationDetails(id);
+      if (version !== pendingVersion.current) return; // ignore stale responses from rapid switches
       setActiveDetails(data);
     } finally {
-      setLoadingDetails(false);
+      // no-op; loading state tracked by setActiveDetails alone
     }
   }, []);
 
   React.useEffect(() => {
-    if (activeId) {
-      loadDetails(activeId);
-    }
+    if (!activeId) return;
+    loadDetails(activeId);
   }, [activeId, loadDetails]);
 
   // Realtime Supabase Subscription for incoming messages
@@ -76,8 +75,6 @@ export function WhatsAppInbox({
           if (activeId && payload.new.conversation_id === activeId) {
             loadDetails(activeId);
           }
-          // Refresh page/list data
-          router.refresh();
         },
       )
       .subscribe();
@@ -85,9 +82,12 @@ export function WhatsAppInbox({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [activeId, loadDetails, router]);
+  }, [activeId, loadDetails]);
 
   const handleSelectConversation = (id: string) => {
+    // Clear the previous customer's data immediately when switching, so stale
+    // data never flashes while the newly selected conversation loads.
+    setActiveDetails(null);
     setActiveId(id);
   };
 
@@ -95,7 +95,6 @@ export function WhatsAppInbox({
     if (activeId) {
       loadDetails(activeId);
     }
-    router.refresh();
   };
 
   return (

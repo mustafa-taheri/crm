@@ -41,7 +41,6 @@ export async function fetchConversations(
         tags:customer_tags!customer_id(tag:tags!tag_id(id, name))
       ),
       assigned_user:profiles!assigned_user_id(id, full_name),
-      messages:messages!conversation_id(id, content, direction, message_type, created_at, status)
     `,
     )
     .eq("state", "open")
@@ -75,9 +74,8 @@ export async function fetchConversations(
 
   const customerIds = Array.from(new Set(rawConvs.map((c) => c.customer_id).filter(Boolean)));
   const userIds = Array.from(new Set(rawConvs.map((c) => c.assigned_user_id).filter(Boolean))) as string[];
-  const convIds = rawConvs.map((c) => c.id);
 
-  const [{ data: customers }, { data: phones }, { data: tags }, { data: profiles }, { data: messages }] =
+  const [{ data: customers }, { data: phones }, { data: tags }, { data: profiles }] =
     await Promise.all([
       customerIds.length > 0
         ? supabase.from("customers").select("*").in("id", customerIds)
@@ -91,13 +89,6 @@ export async function fetchConversations(
       userIds.length > 0
         ? supabase.from("profiles").select("id, full_name").in("id", userIds)
         : Promise.resolve({ data: [] }),
-      convIds.length > 0
-        ? supabase
-            .from("messages")
-            .select("id, conversation_id, content, direction, message_type, created_at, status")
-            .in("conversation_id", convIds)
-            .order("created_at", { ascending: true })
-        : Promise.resolve({ data: [] }),
     ]);
 
   const customerMap = new Map(
@@ -106,7 +97,7 @@ export async function fetchConversations(
       {
         ...c,
         phones: (phones || []).filter((p) => p.customer_id === c.id),
-        tags: (tags || []).filter((t: any) => t.customer_id === c.id),
+        tags: (tags || []).filter((t) => t.customer_id === c.id),
       },
     ]),
   );
@@ -116,7 +107,6 @@ export async function fetchConversations(
     ...conv,
     customer: customerMap.get(conv.customer_id) || null,
     assigned_user: conv.assigned_user_id ? profileMap.get(conv.assigned_user_id) || null : null,
-    messages: (messages || []).filter((m) => m.conversation_id === conv.id),
   }));
 }
 
