@@ -110,7 +110,9 @@ export function ConversationList({
                 type="button"
                 onClick={() => onSelect(c.id)}
                 className={`w-full text-left p-3 transition-colors hover:bg-muted/50 ${
-                  isActive ? "bg-primary-50 dark:bg-muted" : ""
+                  isActive
+                    ? "bg-blue-400 dark:bg-muted border-l-2 border-primary dark:border-primary/50"
+                    : "border-l-2 border-transparent"
                 }`}
               >
                 <div className="flex items-start justify-between gap-2 mb-1">
